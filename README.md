@@ -6,6 +6,13 @@ University][drexel].
 
 # SSL certificate chain monitoring
 
+SSL certificate chain monitoring requires the following prerequisites.
+
+- bash shell
+- OpenSSL
+- GNU Awk (available on Mac through homebrew)
+- BSD date or GNU date
+
 The following script monitors certificate chains and reports the current status.
 
     ./ssl_chain_expiration.sh example.com
@@ -20,5 +27,9 @@ Exit states:
 - `1` - warning, one of the certificates in the chain has less than 60 days
   before exiration.
 - `2` - critical, one of the certificates in the chain has expired.
+
+See the full range of options in the help text.
+
+    ./ssl_chain_expiration.sh --help
 
 [drexel]: https://github.com/samrocketman/drexel-university
