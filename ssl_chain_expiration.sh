@@ -28,9 +28,35 @@
 EXIT_SUCCESS=0
 EXIT_WARNING=1
 EXIT_CRITICAL=2
+EXIT_UNKNOWN=3 # only used by help text
 
 # Days before expiration to trigger a warning.  Value is in seconds.
 DAYS_TO_EXPIRE=5184000 # sixty days in seconds
+
+function show_helptext() {
+cat >&2 <<'EOF'
+SYNOPSIS
+    ssl_chain_expiration.sh HOST [PORT]
+
+DESCRIPTION
+    This monitoring script inspects TLS X.509 certificate chains and reports
+    expirations for every certificate in the chain.
+
+OPTIONS
+    HOST - A hostname which has a TLS secured web service.  This script will
+           connect and inspect the entire chain.
+    PORT - A port to connect to the remote HOST.  By default 443.
+
+EXAMPLE USAGE
+    ./ssl_chain_expiration.sh example.com
+    ./ssl_chain_expiration.sh example.com 443
+
+EXIT STATUS:
+    0 - success, All certificates valid for at least 60 days.
+    1 - warning, One of the certificates in the chain will expire soon.
+    2 - critical, One of the certificates in the chain has expired.
+EOF
+}
 
 function awkscript() {
 cat <<'EOF'
@@ -120,6 +146,14 @@ set -e
 
 host="${1:-}"
 port="${2:-443}"
+
+if [ "$host" = '--help' ] || \
+   [ "$host" = '-help' ] || \
+   [ "$host" = '-h' ] || \
+   [ -z "$host" ]; then
+  show_helptext
+  exit "${EXIT_UNKNOWN}"
+fi
 
 # openssl | gawk which calls date and openssl on each certificate
 openssl s_client \
