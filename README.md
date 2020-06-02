@@ -25,7 +25,7 @@ Exit states:
 
 - `0` - success, entire certificate chain is valid for at least 60 days.
 - `1` - warning, one of the certificates in the chain has less than 60 days
-  before exiration.
+  before expiration.
 - `2` - critical, one of the certificates in the chain has expired.
 
 See the full range of options in the help text.
