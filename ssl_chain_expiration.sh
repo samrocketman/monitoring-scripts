@@ -48,7 +48,7 @@ ARGUMENTS
     PORT - A port to connect to the remote HOST.  By default 443.
 
 OPTIONS
-    -s, --warn-expiration SECONDS
+    -e, --warn-expiration SECONDS
         Warn SECONDS before a certificate expires.  Value is default to 60 days
         or 5184000 seconds.
     -o, --oneline
@@ -56,6 +56,10 @@ OPTIONS
         how the message is formatted for alternate monitoring systems.   By
         default, this option is disabled and output is according to a format
         valid for Icinga monitoring.
+    -s, --skip-good
+        This will only show warning or critical certificates.  If enabled this
+        option will skip output of good results so that bad results are quickly
+        available.  By default, this option is disabled so show good results.
 
 EXAMPLE USAGE
     Test a service
@@ -64,7 +68,9 @@ EXAMPLE USAGE
         ./ssl_chain_expiration.sh example.com 443
     Test a service for expiring within 30 days.
         ./ssl_chain_expiration.sh --warn-expiration 2592000 example.com
-        ./ssl_chain_expiration.sh -s 2592000 example.com
+        ./ssl_chain_expiration.sh -e 2592000 example.com
+    Compress output to one line and only show certificate errors.
+        ./ssl_chain_expiration.sh -o -s example.com
 
 EXIT STATUS:
     0 - success, All certificates valid for at least 60 days.
@@ -144,6 +150,9 @@ endcert == "true" {
     prefix = "EXPIRED:"
     exit_result = expired_exit_code
   }
+  if(skipgood == "true" && prefix == "GOOD:") {
+    next
+  }
   if(oneline == "true") {
     oneline_text = oneline_text"  "prefix" "subject" expires "expr_date"."
   }
@@ -168,13 +177,13 @@ function overall_status() {
   fi
   case $1 in
     0)
-      "${echo[@]}" 'OK: All certificates good.'
+      "${echo[@]}" "OK: All certificates good for ${host}:${port}."
     ;;
     1)
-      "${echo[@]}" 'WARNING: One or more certificates in the chain will expire soon.'
+      "${echo[@]}" "WARNING: Certificate in ${host}:${port} chain will expire soon."
     ;;
     2)
-      "${echo[@]}" 'CRITICAL: One or more certificates in the chain has expired.'
+      "${echo[@]}" "CRITICAL: Certificate in ${host}:${port} chain has expired."
     ;;
     *)
       "${echo[@]}" 'UNKNOWN: an unknown error has occurred.'
@@ -191,13 +200,17 @@ function parse_options() {
         show_helptext
         exit "${EXIT_UNKNOWN}"
       ;;
+      -e|--warn-expiration)
+        TIME_TO_EXPIRE="$2"
+        shift
+        shift
+      ;;
       -o|--oneline)
         oneline=true
         shift
       ;;
-      -s|--warn-expiration)
-        TIME_TO_EXPIRE="$2"
-        shift
+      -s|--skip-good)
+        skipgood=true
         shift
       ;;
       *)
@@ -219,6 +232,7 @@ function parse_options() {
 set -e
 
 oneline=false
+skipgood=false
 port=443
 parse_options "$@"
 
@@ -244,4 +258,5 @@ openssl s_client \
       -v exit_critical="${EXIT_CRITICAL}" \
       -v seconds_to_expire="${TIME_TO_EXPIRE}" \
       -v oneline="${oneline}" \
+      -v skipgood="${skipgood}" \
       "$(awkscript)" > "${TMP_DIR}/status.txt"
