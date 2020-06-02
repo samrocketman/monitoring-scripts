@@ -31,25 +31,35 @@ EXIT_CRITICAL=2
 EXIT_UNKNOWN=3 # only used by help text
 
 # Days before expiration to trigger a warning.  Value is in seconds.
-DAYS_TO_EXPIRE=5184000 # sixty days in seconds
+TIME_TO_EXPIRE=5184000 # sixty days in seconds
 
 function show_helptext() {
 cat >&2 <<'EOF'
 SYNOPSIS
-    ssl_chain_expiration.sh HOST [PORT]
+    ssl_chain_expiration.sh [OPTIONS] HOST [PORT]
 
 DESCRIPTION
     This monitoring script inspects TLS X.509 certificate chains and reports
     expirations for every certificate in the chain.
 
-OPTIONS
+ARGUMENTS
     HOST - A hostname which has a TLS secured web service.  This script will
            connect and inspect the entire chain.
     PORT - A port to connect to the remote HOST.  By default 443.
 
+OPTIONS
+    -s, --warn-expiration SECONDS
+        Warn SECONDS before a certificate expires.  Value is default to 60 days
+        or 5184000 seconds.
+
 EXAMPLE USAGE
-    ./ssl_chain_expiration.sh example.com
-    ./ssl_chain_expiration.sh example.com 443
+    Test a service
+        ./ssl_chain_expiration.sh example.com
+    Test a service customizing port.
+        ./ssl_chain_expiration.sh example.com 443
+    Test a service for expiring within 30 days.
+        ./ssl_chain_expiration.sh --warn-expiration 2592000 example.com
+        ./ssl_chain_expiration.sh -s 2592000 example.com
 
 EXIT STATUS:
     0 - success, All certificates valid for at least 60 days.
@@ -71,7 +81,7 @@ BEGIN {
   almost_expired_exit_code = exit_warning
   expired_exit_code = exit_critical
 
-  warn_seconds_before_expire = days_to_expire
+  warn_seconds_before_expire = seconds_to_expire
 }
 
 $2 ~ /s:/ {
@@ -157,23 +167,44 @@ function overall_status() {
   [ ! -d "${TMP_DIR:-}" ] || rm -rf "${TMP_DIR}"
 }
 
+function parse_options() {
+  while [ "$#" -gt 0 ]; do
+    case $1 in
+      --help|-help|-h)
+        show_helptext
+        exit "${EXIT_UNKNOWN}"
+      ;;
+      -s|--warn-expiration)
+        TIME_TO_EXPIRE="$2"
+        shift
+        shift
+      ;;
+      *)
+        if [ -z "${host:-}" ]; then
+          host="$1"
+        else
+          port="$1"
+        fi
+        shift
+      ;;
+    esac
+  done
+}
+
 #
 # MAIN EXECUTION
 #
 
 set -e
 
-host="${1:-}"
-port="${2:-443}"
+port=443
+parse_options "$@"
 
-if [ "$host" = '--help' ] || \
-   [ "$host" = '-help' ] || \
-   [ "$host" = '-h' ] || \
-   [ -z "$host" ]; then
+if [ -z "${host:-}" ]; then
+  echo 'ERROR: missing HOST argument.'
   show_helptext
   exit "${EXIT_UNKNOWN}"
 fi
-
 
 trap 'overall_status $?' EXIT
 TMP_DIR="$(mktemp -d)"
@@ -189,5 +220,5 @@ openssl s_client \
       -v exit_success="${EXIT_SUCCESS}" \
       -v exit_warning="${EXIT_WARNING}" \
       -v exit_critical="${EXIT_CRITICAL}" \
-      -v days_to_expire="${DAYS_TO_EXPIRE}" \
+      -v seconds_to_expire="${TIME_TO_EXPIRE}" \
       "$(awkscript)" > "${TMP_DIR}/status.txt"
