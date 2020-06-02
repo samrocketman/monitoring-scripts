@@ -229,7 +229,7 @@ function parse_options() {
 # MAIN EXECUTION
 #
 
-set -e
+set -eo pipefail
 
 oneline=false
 skipgood=false
