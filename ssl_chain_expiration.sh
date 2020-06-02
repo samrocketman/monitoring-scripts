@@ -51,6 +51,11 @@ OPTIONS
     -s, --warn-expiration SECONDS
         Warn SECONDS before a certificate expires.  Value is default to 60 days
         or 5184000 seconds.
+    -o, --oneline
+        Compress output to one line of text.  This introduces flexibility in
+        how the message is formatted for alternate monitoring systems.   By
+        default, this option is disabled and output is according to a format
+        valid for Icinga monitoring.
 
 EXAMPLE USAGE
     Test a service
@@ -139,28 +144,40 @@ endcert == "true" {
     prefix = "EXPIRED:"
     exit_result = expired_exit_code
   }
-  print prefix, subject, "expires", expr_date"."
+  if(oneline == "true") {
+    oneline_text = oneline_text"  "prefix" "subject" expires "expr_date"."
+  }
+  else {
+    print prefix, subject, "expires", expr_date"."
+  }
 }
 
 END {
+  if(oneline == "true") {
+    print oneline_text
+  }
   exit(exit_result)
 }
 EOF
 }
 
 function overall_status() {
-  case $? in
+  echo=( echo )
+  if [ "${oneline}" = true ]; then
+    echo+=( -n )
+  fi
+  case $1 in
     0)
-      echo 'OK: All certificates good.'
+      "${echo[@]}" 'OK: All certificates good.'
     ;;
     1)
-      echo 'WARNING: One or more certificates in the chain will expire soon.'
+      "${echo[@]}" 'WARNING: One or more certificates in the chain will expire soon.'
     ;;
     2)
-      echo 'CRITICAL: One or more certificates in the chain has expired.'
+      "${echo[@]}" 'CRITICAL: One or more certificates in the chain has expired.'
     ;;
     *)
-      echo 'UNKNOWN: an unknown error has occurred.'
+      "${echo[@]}" 'UNKNOWN: an unknown error has occurred.'
     ;;
   esac
   [ ! -e "${TMP_DIR}/status.txt" ] || cat "${TMP_DIR}/status.txt"
@@ -173,6 +190,10 @@ function parse_options() {
       --help|-help|-h)
         show_helptext
         exit "${EXIT_UNKNOWN}"
+      ;;
+      -o|--oneline)
+        oneline=true
+        shift
       ;;
       -s|--warn-expiration)
         TIME_TO_EXPIRE="$2"
@@ -197,6 +218,7 @@ function parse_options() {
 
 set -e
 
+oneline=false
 port=443
 parse_options "$@"
 
@@ -221,4 +243,5 @@ openssl s_client \
       -v exit_warning="${EXIT_WARNING}" \
       -v exit_critical="${EXIT_CRITICAL}" \
       -v seconds_to_expire="${TIME_TO_EXPIRE}" \
+      -v oneline="${oneline}" \
       "$(awkscript)" > "${TMP_DIR}/status.txt"
