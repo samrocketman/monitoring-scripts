@@ -138,6 +138,25 @@ END {
 EOF
 }
 
+function overall_status() {
+  case $? in
+    0)
+      echo 'OK: All certificates good.'
+    ;;
+    1)
+      echo 'WARNING: One or more certificates in the chain will expire soon.'
+    ;;
+    2)
+      echo 'CRITICAL: One or more certificates in the chain has expired.'
+    ;;
+    *)
+      echo 'UNKNOWN: an unknown error has occurred.'
+    ;;
+  esac
+  [ ! -e "${TMP_DIR}/status.txt" ] || cat "${TMP_DIR}/status.txt"
+  [ ! -d "${TMP_DIR:-}" ] || rm -rf "${TMP_DIR}"
+}
+
 #
 # MAIN EXECUTION
 #
@@ -155,6 +174,10 @@ if [ "$host" = '--help' ] || \
   exit "${EXIT_UNKNOWN}"
 fi
 
+
+trap 'overall_status $?' EXIT
+TMP_DIR="$(mktemp -d)"
+
 # openssl | gawk which calls date and openssl on each certificate
 openssl s_client \
     -servername "$host" \
@@ -167,4 +190,4 @@ openssl s_client \
       -v exit_warning="${EXIT_WARNING}" \
       -v exit_critical="${EXIT_CRITICAL}" \
       -v days_to_expire="${DAYS_TO_EXPIRE}" \
-      "$(awkscript)"
+      "$(awkscript)" > "${TMP_DIR}/status.txt"
