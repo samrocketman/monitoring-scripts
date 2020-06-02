@@ -30,8 +30,9 @@ EXIT_WARNING=1
 EXIT_CRITICAL=2
 EXIT_UNKNOWN=3 # only used by help text
 
-# Days before expiration to trigger a warning.  Value is in seconds.
-TIME_TO_EXPIRE=5184000 # sixty days in seconds
+# Days before expiration to trigger warnings.  Value is in seconds.
+WARN_TO_EXPIRE=5184000 # sixty days in seconds
+CRITICAL_TO_EXPIRE=2592000 # thirty days in seconds
 
 function show_helptext() {
 cat >&2 <<'EOF'
@@ -48,9 +49,9 @@ ARGUMENTS
     PORT - A port to connect to the remote HOST.  By default 443.
 
 OPTIONS
-    -e, --warn-expiration SECONDS
-        Warn SECONDS before a certificate expires.  Value is default to 60 days
-        or 5184000 seconds.
+    -c, --critical-expiration SECONDS
+        Alert critical SECONDS before certificate expires.  Value is default to
+        30 days or 2592000 seconds.
     -o, --oneline
         Compress output to one line of text.  This introduces flexibility in
         how the message is formatted for alternate monitoring systems.   By
@@ -60,15 +61,17 @@ OPTIONS
         This will only show warning or critical certificates.  If enabled this
         option will skip output of good results so that bad results are quickly
         available.  By default, this option is disabled so show good results.
+    -w, --warn-expiration SECONDS
+        Warn SECONDS before a certificate expires.  Value is default to 60 days
+        or 5184000 seconds.
 
 EXAMPLE USAGE
     Test a service
         ./ssl_chain_expiration.sh example.com
     Test a service customizing port.
         ./ssl_chain_expiration.sh example.com 443
-    Test a service for expiring within 30 days.
-        ./ssl_chain_expiration.sh --warn-expiration 2592000 example.com
-        ./ssl_chain_expiration.sh -e 2592000 example.com
+    Test warn in 30 days and critically alert in 7 days.
+        ./ssl_chain_expiration.sh -w 2592000 -c 604800 example.com
     Compress output to one line and only show certificate errors.
         ./ssl_chain_expiration.sh -o -s example.com
 
@@ -89,10 +92,11 @@ BEGIN {
   exit_result = exit_success
 
   # error states
-  almost_expired_exit_code = exit_warning
-  expired_exit_code = exit_critical
+  # exit_warning
+  # exit_critical
 
-  warn_seconds_before_expire = seconds_to_expire
+  warn_seconds_before_expire = warn_to_expire
+  critical_seconds_before_expire = critical_to_expire
 }
 
 $2 ~ /s:/ {
@@ -129,7 +133,7 @@ endcert == "true" {
 
   # Mac OS calculate with BSD date
   if(kernel == "Darwin") {
-    datecmd = "date -jf '%b %d %T %Y %Z' \""expr_date"\" +%s"
+    datecmd = "date -jf \"%b %d %T %Y %Z\" \""expr_date"\" +%s"
     datecmd | getline expr_date_epoch
     close(datecmd)
   }
@@ -144,11 +148,17 @@ endcert == "true" {
   prefix = "GOOD:"
   if((expr_date_epoch - datenow ) < warn_seconds_before_expire) {
     prefix = "ALMOST EXPIRED:"
-    exit_result = almost_expired_exit_code
+    if(exit_warning > exit_result) {
+      exit_result = exit_warning
+    }
+  }
+  if((expr_date_epoch - datenow ) < critical_seconds_before_expire) {
+    prefix = "CRITICAL NEAR EXPIRED:"
+    exit_result = exit_critical
   }
   if((expr_date_epoch - datenow ) < 1 ) {
     prefix = "EXPIRED:"
-    exit_result = expired_exit_code
+    exit_result = exit_critical
   }
   if(skipgood == "true" && prefix == "GOOD:") {
     next
@@ -200,8 +210,8 @@ function parse_options() {
         show_helptext
         exit "${EXIT_UNKNOWN}"
       ;;
-      -e|--warn-expiration)
-        TIME_TO_EXPIRE="$2"
+      -c|--critical-expiration)
+        CRITICAL_TO_EXPIRE="$2"
         shift
         shift
       ;;
@@ -212,6 +222,15 @@ function parse_options() {
       -s|--skip-good)
         skipgood=true
         shift
+      ;;
+      -w|--warn-expiration)
+        WARN_TO_EXPIRE="$2"
+        shift
+        shift
+      ;;
+      -*)
+        echo "ERROR: Invalid option provided '$1'.  See --help." >&2
+        exit "${EXIT_UNKNOWN}"
       ;;
       *)
         if [ -z "${host:-}" ]; then
@@ -256,7 +275,8 @@ openssl s_client \
       -v exit_success="${EXIT_SUCCESS}" \
       -v exit_warning="${EXIT_WARNING}" \
       -v exit_critical="${EXIT_CRITICAL}" \
-      -v seconds_to_expire="${TIME_TO_EXPIRE}" \
+      -v warn_to_expire="${WARN_TO_EXPIRE}" \
+      -v critical_to_expire="${CRITICAL_TO_EXPIRE}" \
       -v oneline="${oneline}" \
       -v skipgood="${skipgood}" \
       "$(awkscript)" > "${TMP_DIR}/status.txt"
