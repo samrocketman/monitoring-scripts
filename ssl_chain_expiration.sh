@@ -182,6 +182,9 @@ EOF
 
 function overall_status() {
   echo=( echo )
+  if [ "$debug" = true -a -f "${TMP_DIR}/stderr" ]; then
+    cat "${TMP_DIR}/stderr" >&2
+  fi
   if [ "${oneline}" = true ]; then
     echo+=( -n )
   fi
@@ -215,6 +218,10 @@ function parse_options() {
         shift
         shift
       ;;
+      --debug)
+        debug=true
+        shift
+      ;;
       -o|--oneline)
         oneline=true
         shift
@@ -236,6 +243,10 @@ function parse_options() {
         if [ -z "${host:-}" ]; then
           host="$1"
         else
+          if ! [ "$1" -gt 0 -a "$1" -lt 65535 ]; then
+            echo "ERROR: Port '$1' must be a number between 1 and 65535" >&2
+            exit 1
+          fi
           port="$1"
         fi
         shift
@@ -253,6 +264,7 @@ set -eo pipefail
 oneline=false
 skipgood=false
 port=443
+debug=false
 parse_options "$@"
 
 if [ -z "${host:-}" ]; then
@@ -268,7 +280,7 @@ TMP_DIR="$(mktemp -d)"
 openssl s_client \
     -servername "$host" \
     -connect "$host":"$port" \
-    -showcerts < /dev/null 2> /dev/null | \
+    -showcerts < /dev/null 2> "${TMP_DIR}/stderr" | \
   gawk \
       -v kernel="$(uname -s)" \
       -v datenow="$(date +%s)" \
